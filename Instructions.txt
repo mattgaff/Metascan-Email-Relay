@@ -1,0 +1,42 @@
+# Metascan Email Relay
+# Author: Matthew Ghafary
+
+Purpose:
+	This script will listen on the specific IP/port and process email attachments with Metascan online.
+	After, it will send them to a real mail server that is specified in the options at the beginning
+	of the python file. This script does NOT process outgoing emails, it assumes one has already
+	secured his or her employees attachments. So in the smart email server you will have it only accept emails
+	from the relay and send emails without it.
+	
+How to start:
+	This program can be run using a cron job or doing something like "python meta_scanrelay.py &".
+	For testing just a simple "python meta_scanrelay.py" is required from a terminal. I highly 
+	recommend using 2 IP addresses instead of trying to run everything on one IP where you need to be
+	careful about not assigning improper ports.
+	
+LISTEN_ON
+	The IP or hostname the email relay is to be run on.
+
+LISTEN_ON_PORT
+	The port to run the email relay on.
+
+MAIL_SERVER_DEST
+	Set to the smart SMTP server you want to send email to.
+
+MAIL_SERVER_PORT
+	Set to the port the smart SMTP server is run on. If running on the same IP do not let it run on port 25.
+	
+	NOTE: Metascan Email Relay does all its listening on port 25 by default.
+	
+META_SCAN_API_LINK
+	The Metascan link to use, should not need to change.
+	
+META_SCAN_API_KEY
+	Your personal Metascan API key.
+	
+SCAN_LOOKUP_SLEEP_TIME
+	How many seconds to wait in between polls to the scan server for results. Defaults to 5 seconds.
+	
+SCAN_MAX_LOOKUP_TIME
+	The maximum time to wait for total polls, If takes more than 30 seconds will still send email with error message.
+	Defaults to 30 seconds.
