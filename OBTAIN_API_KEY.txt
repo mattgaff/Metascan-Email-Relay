@@ -1,6 +1,0 @@
-To use this email relay, one needs to obtain an API key from:
-https://portal.opswat.com/metascan-online-api
-
-After you generate an account, go to Security Applications.
-Then click on Metascan Online API.
-Find the Metascan Online API Key and copy it into the program.
