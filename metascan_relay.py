@@ -2,8 +2,6 @@
 # Metascan Online Email Relay
 # Author: Matthew Ghafary
 # Date Published: Nov. 18, 2013
-# Updates completed: Dec. 30, 2013
-# OPSwat Student Programming Competition Fall 2013
 
 from email.utils import getaddresses
 import sys
@@ -21,7 +19,10 @@ import asyncore
 from io import BytesIO
 from email.mime.base import MIMEBase
 from email.encoders import encode_base64
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 import mimetypes
+import hashlib
 
 
 # These are needed up here for the config file to assign
@@ -38,7 +39,6 @@ SCAN_MAX_LOOKUP_TIME = None
 # Reference: http://antonym.org/2005/12/dropping-privileges-in-python.html
 def drop_privileges(uid_name='nobody', gid_name='nobody'):
     if os.getuid() != 0:
-        # We're not root so, like, whatever dude
         return
 
     # Get the uid/gid from the name
@@ -58,44 +58,53 @@ class CustomSMTPServer(smtpd.SMTPServer):
 
        	email = message_from_string(data) # Convert Data string into python email.
 
-        sendTo = email_to_who(email) # Finds if email is valid for this server
-
        	orig_subject = email['subject'] # Will use this when we need to modify subject.
        	
        	# Scan email for attachments. Return Queue of attachments.
        	filesToScan = find_attachments(email)
        
        	if filesToScan.empty(): # If there are no attachments, just send the email.
-                send_message(email, sendTo)
+                send_message(email, mailfrom, rcpttos)
                 return
-       
+
        	# At least one attachment found.
        	# Pass the queue of files in, and return the file_id's.
        	file_id = scan_attachments(filesToScan)
        
        	if not file_id: # Metascan problem, no file_ids.
        		del email['subject'] # NEED to delete subject from email, or possible errors.
-       		email['subject'] = '[File_ID_ERROR] - ' + orig_subject
-       		send_message(email)
+       		email['subject'] = '[Malware scan error] ' + orig_subject
+       		send_message(email, mailfrom, rcpttos)
        		return 
        
        	# File_IDs were received successfully.
        	# Return file ID's without JSON
-       	cleaned_ids = clean_ids(file_id)
+       	file_id = clean_ids(file_id)
        
        	output = BytesIO() # output is a "virtual" file. Holds FULL Metascan results.
        	
        	# Pass in the cleaned ID's and try to retrieve results from metascan.
        	# The final_result will give us a status string.
-       	final_result = scan_results(cleaned_ids, output)
+       	file_id = scan_results(file_id)
        
        	# First thing we do is check to see if we had scan errors,
        	# If we did, we don't attach any Metascan information.
        	# Just change the subject to inform the user.
-       	if final_result == 'Did Not Finish':
-       		email['subject'] = '[Did Not Finish] - ' + orig_subject
-       		send_message(email)
+       	if file_id == 'Did Not Finish':
+       		email['subject'] = '[Malware scan error] ' + orig_subject
+       		send_message(email, mailfrom, rcpttos)
        	
+        final_result = 'Clean'
+
+        for final_list in file_id:
+          if return_scan_value(final_list.status) == 'Infected':
+            final_result = 'Infected'
+          elif return_scan_value(final_list.status) == 'Clean':
+            None
+          else:
+            final_result = 'Scan Error'
+          output.write(json.dumps(final_list.json_results, sort_keys=True, indent=4).encode('utf-8'))
+
        	# Here we know that scan results were successful, and we attach metascan.txt
        	# In python emails are MIME data types, so we create a new one,
        	# put the output text file as binary data, encode and attach to the email.
@@ -104,22 +113,26 @@ class CustomSMTPServer(smtpd.SMTPServer):
        	msg.add_header('Content-Disposition', 'attachment', filename='metascan.txt')
        	encode_base64(msg)
        	email.attach(msg)
-       	
-       	# Change subject and send.
-       	if final_result == 'Clean':
+
+        msg2 = MIMEText("\n\nScanned with Metascan Online\nhttps://www.metascan-online.com", 'plain')
+
+        email.attach(msg2)
+
+        # Change subject and send.
+        if final_result == 'Clean':
        		del email['subject']
-       		email['subject'] = '[Clean] - ' + orig_subject
-       		send_message(email, sendTo)
+       		email['subject'] = '[No threat detected] ' + orig_subject
+       		send_message(email, mailfrom, rcpttos)
        		
        	elif final_result == 'Infected':
        		del email['subject']
-       		email['subject'] = '[Infected] - ' + orig_subject
-       		send_message(email, sendTo)
+       		email['subject'] = '[Threat detected] ' + orig_subject
+       		send_message(email, mailfrom, rcpttos)
        	
        	elif final_result == 'Scan Error':
        		del email['subject']
-       		email['subject'] = '[Scan Error] - ' + orig_subject
-       		send_message(email, sendTo)
+       		email['subject'] = '[Malware scan error] ' + orig_subject
+       		send_message(email, mailfrom, rcpttos)
 
        	return
   	
@@ -159,23 +172,12 @@ class name_and_data:
        	self.name = None
        	self.data = None
 
-def email_to_who(email):
-
-    sendTo = []
-
-    tos = email.get_all('to', []) # regular direct email
-    resent_tos = email.get_all('resent-to', []) # Forwarded emails.
-    ccs = email.get_all('cc', []) # Direct CC
-    resent_ccs = email.get_all('resent-cc', []) # Forwarded CC
-
-    recipients = getaddresses(tos + resent_tos + ccs + resent_ccs)
-
-    for (nick, address) in recipients:
-        if DOMAIN_ACCEPTED in address:
-            if address not in sendTo:
-                sendTo.append(address)
-
-    return sendTo
+class id_and_scan:
+      def __init__(self):
+        self.id = None
+        self.scanned_before = None
+        self.status = None
+        self.json_results = None
 
 # This will scan the email object for attachments. If there is an attachment,
 # it will return a queue with 1 or more attachments.
@@ -208,31 +210,54 @@ def scan_attachments(filesToScan):
        
        while filesToScan.empty() == False:
        	attachment = filesToScan.get() # Automatically pop/dequeue first attachment.
-       	
-       	# Use urllib2 (similar to curl) to send data to MetaScan. 
-       	request = urllib.request.Request(META_SCAN_API_LINK, attachment.data)
-       	request.add_header('apikey', META_SCAN_API_KEY)
-       	request.add_header('filename', attachment.name)
-       	
-       	# Try the request, if error will return empty list.
-       	try:
-       		response = urllib.request.urlopen(request)
-       		
-       	# Why have responseList twice below? The list will be empty and we know something went wrong.
-       	# Also if code is used in production environment in the future, one can edit it
-       	# more easily to do other things based on the error type.
-       	except URLError as error:
-       	
-       		if hasattr(error, 'reason'): # Couldn't contact server.
-       			responseList[:] = [] # Empty list in case, file before was successful.
-       			return responseList
-       			
-       		elif hasattr(error, 'code'): # Server error.
-       			responseList[:] = [] # Empty list in case, file before was successful.
-       			return responseList
-       			
-       	# No errors scanning file, append the ID to the list.
-       	responseList.append(str(response.read()))
+
+        # Get sha1sum of current file, then send sha1 to metascan to see if it has scanned before.
+        # If it has scanned before, don't scan it, but still put id in responseList.
+        # If it hasn't been scanned, we scan, then put id in responseList.
+        sha1sum = hashlib.sha1(attachment.data).hexdigest()
+        sha1Final = 'https://api.metascan-online.com/v1/hash/' + sha1sum
+       	requestToSeeIfScannedBefore = urllib.request.Request(sha1Final)
+        requestToSeeIfScannedBefore.add_header('apikey', META_SCAN_API_KEY)
+
+        json_results = urllib.request.urlopen(requestToSeeIfScannedBefore).read().decode("utf-8")
+        decoded_json = json.loads(json_results)
+
+        if('Not Found' == decoded_json.get(sha1sum)): # hasn't been scanned before.
+          request = urllib.request.Request(META_SCAN_API_LINK, attachment.data)
+          request.add_header('apikey', META_SCAN_API_KEY)
+          request.add_header('filename', attachment.name)
+          try:
+              response = urllib.request.urlopen(request)
+
+          # Why have responseList twice below? The list will be empty and we know something went wrong.
+          # Also if code is used in production environment in the future, one can edit it
+          # more easily to do other things based on the error type.
+          except URLError as error:
+          
+              if hasattr(error, 'reason'): # Couldn't contact server.
+                responseList[:] = [] # Empty list in case, file before was successful.
+                return responseList
+              
+              elif hasattr(error, 'code'): # Server error.
+                responseList[:] = [] # Empty list in case, file before was successful.
+                return responseList
+              
+          # No errors scanning file, append the ID to the list.
+          idStruct = id_and_scan()
+          idStruct.id = str(response.read())
+          idStruct.scanned_before = False
+          responseList.append(idStruct)
+        else:
+          # Make the format like the not found response
+          # Slightly sloppy to do it this way, should fix.
+          data_id = decoded_json['data_id']
+          data_id = ': \"' + data_id + '\" }'
+          idStruct = id_and_scan()
+          idStruct.id = data_id
+          idStruct.scanned_before = True
+          idStruct.status = decoded_json['scan_results']['scan_all_result_i']
+          idStruct.json_results = decoded_json
+          responseList.append(idStruct)
        	
        return responseList
 
@@ -244,22 +269,25 @@ def clean_ids(file_id):
        index = 0
        
        while index < len(file_id):
-       	tempString = file_id[index]
+       	tempString = file_id[index].id
        	loc1 = tempString.find(': \"')
        	loc2 = tempString.find('\" }')
-       	file_id[index] = tempString[loc1 + 3: loc2]
+       	file_id[index].id = tempString[loc1 + 3: loc2]
        	index = index + 1
        	
        return file_id
 
 # The scan results are in JSON format. Here I extracted them using python's built-in
 # libraries for dealing with JSON as the results were much more work to parse manually.
-def scan_results(cleaned_ids, output):
+def scan_results(cleaned_ids):
 
        status = 'Clean'
        
        for id_string in cleaned_ids:
-       	request = urllib.request.Request(META_SCAN_API_LINK + '/' + id_string)
+        if(id_string.scanned_before == True):
+          continue
+          
+       	request = urllib.request.Request(META_SCAN_API_LINK + '/' + id_string.id)
        	request.add_header('apikey', META_SCAN_API_KEY)
 
        	# Prime the read request.
@@ -289,20 +317,16 @@ def scan_results(cleaned_ids, output):
        			
        		time.sleep(SCAN_LOOKUP_SLEEP_TIME) # Wait X seconds until scan re-check, don't want to flood server :)
 
-        output.write(json.dumps(decoded_json, sort_keys=True, indent=4).encode('utf-8'))
-
-       	if progress == 100: # Metascan satisfied requirements.
-       		# Return a string to figure out what to do to the email.
-       		result_i = decoded_json['scan_results']['scan_all_result_i']
-       		if status == 'Infected': # To not overwrite results of infection
-       			None
-       		else:
-       			status = return_scan_value(result_i)
-       	elif progress < 100: # Scan did not finish in time.
-       			status = 'Did Not Finish'
-       			return status
+#       output.write(json.dumps(decoded_json, sort_keys=True, indent=4).encode('utf-8'))
+        if progress == 100:
+          id_string.scanned_before = True
+          id_string.json_results = decoded_json
+          id_string.status = decoded_json['scan_results']['scan_all_result_i']
+        elif progress < 100:
+          status = 'Did Not Finish'
+          return status
        			
-       return status
+       return cleaned_ids
 
 def return_scan_value(x): # Just a quick way to figure out what happened.
        if x == 0 or x == 4 or x == 7:
@@ -313,12 +337,14 @@ def return_scan_value(x): # Just a quick way to figure out what happened.
        	return "Scan Error"
        
        
-def send_message(finalMessage, sendTo):
+def send_message(finalMessage, mailFrom, rcpttos):
 
        try:
        	smtpSend = smtplib.SMTP(MAIL_SERVER_DEST, MAIL_SERVER_PORT)
-       	smtpSend.sendmail(finalMessage['From'], sendTo, finalMessage.__str__())  
+#       	smtpSend.sendmail(finalMessage['From'], sendTo, finalMessage.__str__())  
+        smtpSend.sendmail(mailFrom, rcpttos, finalMessage.__str__())
        except:
+        print("SEND ERROR")
        	return
 
        return
