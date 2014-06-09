@@ -247,7 +247,7 @@ def scan_attachments(filesToScan):
         # Get sha1sum of current file, then send sha1 to metascan to see if it has scanned before.
         # If it has scanned before, don't scan it, but still put id in responseList.
         # If it hasn't been scanned, we scan, then put id in responseList.
-        sha1sum = hashlib.sha1(attachment.data).hexdigest()
+        sha1sum = hashlib.sha1(attachment.data).hexdigest().upper()
         sha1Final = 'https://hashlookup.metascan-online.com/v2/hash/' + sha1sum
         requestToSeeIfScannedBefore = urllib.request.Request(sha1Final)
         requestToSeeIfScannedBefore.add_header('apikey', META_SCAN_API_KEY)
@@ -266,7 +266,7 @@ def scan_attachments(filesToScan):
               logger.error('Problem contacting Metascan server.')
               responseList[:] = [] # Empty list in case, file before was successful.
               return responseList
-              
+
           # No errors scanning file, append the ID to the list.
           idStruct = id_and_scan()
           idStruct.id = str(response.read())
@@ -274,6 +274,7 @@ def scan_attachments(filesToScan):
           idStruct.sha1_sum = sha1sum
           idStruct.file_name = attachment.name
           responseList.append(idStruct)
+          print(idStruct.id)
         else:
           # Make the format like the not found response
           # Slightly sloppy to do it this way, should fix.
@@ -323,6 +324,7 @@ def scan_results(cleaned_ids):
         # Take raw data from MetaScan response and convert it to python readable JSON.
         json_results = urllib.request.urlopen(request).read().decode("utf-8")
         decoded_json = json.loads(json_results)
+        print(decoded_json)
         progress = decoded_json['scan_results']['progress_percentage'] # Get progress percentage from json data.
         
         # May behave different on different systems using time, can always
