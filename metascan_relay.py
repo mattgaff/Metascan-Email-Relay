@@ -2,7 +2,7 @@
 # Metascan Online Email Relay
 # Author: Matthew Ghafary
 # Date Published: Nov. 18, 2013
-# Date Updated: Mar 13, 2014
+# Date Updated: Jun 07, 2017
 # This script is governed by the Metascan Online Plugin agreement.
 # Available on http://github.com/mattgaff/MetaScan-Email-Relay
 
@@ -248,7 +248,7 @@ def scan_attachments(filesToScan):
         # If it has scanned before, don't scan it, but still put id in responseList.
         # If it hasn't been scanned, we scan, then put id in responseList.
         sha1sum = hashlib.sha1(attachment.data).hexdigest()
-        sha1Final = 'https://api.metascan-online.com/v1/hash/' + sha1sum
+        sha1Final = 'https://hashlookup.metascan-online.com/v2/hash/' + sha1sum
         requestToSeeIfScannedBefore = urllib.request.Request(sha1Final)
         requestToSeeIfScannedBefore.add_header('apikey', META_SCAN_API_KEY)
 
