@@ -19,6 +19,7 @@ script will operate in this order:
 5. Attach scan results and remove infected files (if any).
 
 ## Configuration File (config.ini)
+This file should be in the same directory as the metascan_relay.py
 #### LISTEN_ON
     The IP or hostname the email relay is to be run on.
 #### LISTEN_ON_PORT
@@ -50,6 +51,18 @@ script will operate in this order:
 I have tested the script on Ubuntu server 14.04 LTS (64-bit)
 
 I originally had plans for an installation script, but each individual
-server setup is usually unique per organization. So, instead I do plan 
-to provide some basic setup instructions, and how to run the script as 
-a service in ubuntu 64 bit specifically.
+server setup is usually unique per organization. Furthermore, there are
+many different init systems to deal with on UNIX/Linux based OS's.
+
+So, instead I do plan to provide some basic setup instructions, and how 
+to run the script as a service in ubuntu 64 bit specifically.
+
+1. cd /opt
+2. git clone https://github.com/mattgaff/Metascan-Email-Relay.git
+3. cd Metascan-Email-Relay
+4. Edit the config.ini for your organizations needs. (REQUIRED)
+5. Run the script with your chosen method. For testing you can do
+   python metascan_relay.py (you might need to do python3 as your
+   command depending on your distribution).
+6. Instructions on running it as a proper ubuntu service will be uploaded soon.
+   If you need to daemonize it on another distribution and need help let me know.
