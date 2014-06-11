@@ -278,10 +278,7 @@ def scan_attachments(filesToScan):
           idStruct.file_name = attachment.name
           responseList.append(idStruct)
         else:
-          # Make the format like the not found response
-          # Slightly sloppy to do it this way, should fix.
           data_id = decoded_json['data_id']
-          #data_id = ': \"' + data_id + '\" }'
           idStruct = id_and_scan()
           idStruct.id = data_id
           idStruct.scanned_before = True
@@ -293,22 +290,6 @@ def scan_attachments(filesToScan):
         
        return responseList
 
-# The given file id(s) are in JSON format. Need to extract just the id, so we can use string
-# manipulation. This will give us a raw string and place it into our list of id(s).
-# Can also use python JSON parse here if needed.
-def clean_ids(file_id):
-
-       index = 0
-       
-       while index < len(file_id):
-        tempString = file_id[index].id
-        loc1 = tempString.find(': \"')
-        loc2 = tempString.find('\" }')
-        file_id[index].id = tempString[loc1 + 3: loc2]
-        index = index + 1
-        
-       return file_id
-
 # The scan results are in JSON format. Here I extracted them using python's built-in
 # libraries for dealing with JSON as the results were much more work to parse manually.
 def scan_results(cleaned_ids):
@@ -319,10 +300,6 @@ def scan_results(cleaned_ids):
         if(id_string.scanned_before == True):
           continue
         
-        print("----------------------------------------------------------")
-        print('https://' + id_string.rest_ip + '/file/' + id_string.id)
-        print(id_string.id)
-        print("----------------------------------------------------------")
         # Specific file not scanned before. From lookup. Now send it to metascan-online.com
         request = urllib.request.Request('https://' + id_string.rest_ip + '/file/' + id_string.id)
         request.add_header('apikey', META_SCAN_API_KEY)
