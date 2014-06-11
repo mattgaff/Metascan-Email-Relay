@@ -2,7 +2,7 @@
 # Metascan Online Email Relay
 # Author: Matthew Ghafary
 # Date Published: Nov. 18, 2013
-# Date Updated: Jun 07, 2017
+# Date Updated: Jun 07, 2014
 # This script is governed by the Metascan Online Plugin agreement.
 # Available on http://github.com/mattgaff/MetaScan-Email-Relay
 
