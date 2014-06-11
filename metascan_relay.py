@@ -271,16 +271,15 @@ def scan_attachments(filesToScan):
 
           # No errors scanning file, append the ID to the list.
           idStruct = id_and_scan()
-          idStruct.id = str(decoded_response['data_id'])
-          idStruct.rest_ip = str(decoded_response['rest_ip'])
+          idStruct.id = decoded_response['data_id']
+          idStruct.rest_ip = decoded_response['rest_ip']
           idStruct.scanned_before = False
           idStruct.sha1_sum = sha1sum
           idStruct.file_name = attachment.name
           responseList.append(idStruct)
         else:
-          data_id = decoded_json['data_id']
           idStruct = id_and_scan()
-          idStruct.id = data_id
+          idStruct.id = decoded_json['data_id']
           idStruct.scanned_before = True
           idStruct.status = decoded_json['scan_results']['scan_all_result_i']
           idStruct.sha1_sum = decoded_json['file_info']['sha1']
@@ -292,11 +291,11 @@ def scan_attachments(filesToScan):
 
 # The scan results are in JSON format. Here I extracted them using python's built-in
 # libraries for dealing with JSON as the results were much more work to parse manually.
-def scan_results(cleaned_ids):
+def scan_results(attachments):
 
        status = 'Clean'
        
-       for id_string in cleaned_ids:
+       for id_string in attachments:
         if(id_string.scanned_before == True):
           continue
         
@@ -339,7 +338,7 @@ def scan_results(cleaned_ids):
           status = 'Did Not Finish'
           return status
             
-       return cleaned_ids
+       return attachments
 
 def return_scan_value(x): # Just a quick way to figure out what happened.
        if x == 0 or x == 4 or x == 7:
