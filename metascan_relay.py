@@ -89,7 +89,7 @@ class CustomSMTPServer(smtpd.SMTPServer):
        
         # File_IDs were received successfully.
         # Return file ID's without JSON
-        file_id = clean_ids(file_id)
+        #file_id = clean_ids(file_id)
        
         output = BytesIO() # output is a "virtual" file. Holds FULL Metascan results.
         
@@ -212,6 +212,7 @@ class id_and_scan:
         self.json_results = None
         self.sha1_sum = None
         self.file_name = None
+        self.rest_ip = None
 
 # This will scan the email object for attachments. If there is an attachment,
 # it will return a queue with 1 or more attachments.
@@ -260,7 +261,8 @@ def scan_attachments(filesToScan):
           request.add_header('apikey', META_SCAN_API_KEY)
           request.add_header('filename', attachment.name)
           try:
-              response = urllib.request.urlopen(request)
+              response = urllib.request.urlopen(request).read().decode("utf-8")
+              decoded_response = json.loads(response)
 
           except:
               logger.error('Problem contacting Metascan server.')
@@ -269,17 +271,17 @@ def scan_attachments(filesToScan):
 
           # No errors scanning file, append the ID to the list.
           idStruct = id_and_scan()
-          idStruct.id = str(response.read())
+          idStruct.id = str(decoded_response['data_id'])
+          idStruct.rest_ip = str(decoded_response['rest_ip'])
           idStruct.scanned_before = False
           idStruct.sha1_sum = sha1sum
           idStruct.file_name = attachment.name
           responseList.append(idStruct)
-          print(idStruct.id)
         else:
           # Make the format like the not found response
           # Slightly sloppy to do it this way, should fix.
           data_id = decoded_json['data_id']
-          data_id = ': \"' + data_id + '\" }'
+          #data_id = ': \"' + data_id + '\" }'
           idStruct = id_and_scan()
           idStruct.id = data_id
           idStruct.scanned_before = True
@@ -316,15 +318,19 @@ def scan_results(cleaned_ids):
        for id_string in cleaned_ids:
         if(id_string.scanned_before == True):
           continue
-          
-        request = urllib.request.Request(META_SCAN_API_LINK + '/' + id_string.id)
+        
+        print("----------------------------------------------------------")
+        print('https://' + id_string.rest_ip + '/file/' + id_string.id)
+        print(id_string.id)
+        print("----------------------------------------------------------")
+        # Specific file not scanned before. From lookup. Now send it to metascan-online.com
+        request = urllib.request.Request('https://' + id_string.rest_ip + '/file/' + id_string.id)
         request.add_header('apikey', META_SCAN_API_KEY)
 
-        # Prime the read request.
-        # Take raw data from MetaScan response and convert it to python readable JSON.
+        # After file sent returns result of data_id and metascan rest URL to use.
         json_results = urllib.request.urlopen(request).read().decode("utf-8")
         decoded_json = json.loads(json_results)
-        print(decoded_json)
+
         progress = decoded_json['scan_results']['progress_percentage'] # Get progress percentage from json data.
         
         # May behave different on different systems using time, can always
